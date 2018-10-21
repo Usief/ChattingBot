@@ -1,5 +1,6 @@
 import tensorflow as tf
-from seq2seq import  embedding_attention_seq2seq
+from seq2seq import embedding_attention_seq2seq
+
 
 class Seq2SeqModel():
 
@@ -35,7 +36,7 @@ class Seq2SeqModel():
         self.beam_size = beam_size
         self.global_step = tf.Variable(0, trainable=False)
 
-        ouput_projection = None
+        output_projection = None
         softmax_loss_function = None
         # 定义采样loss函数，传入后面的sequence_loss_by_example函数
         if num_samples > 0 and num_samples < self.target_vocab_size:
@@ -45,22 +46,21 @@ class Seq2SeqModel():
             output_projection = (w, b)
 
             # 调用sampled_softmax_loss函数计算sample loss， 这样可以节省计算时间？
-            def sampled_loss(logits, labels):
+            def sample_loss(logits, labels):
                 labels = tf.reshape(labels, [-1, 1])
                 return tf.nn.sampled_softmax_loss(w_t, b, labels=labels, inputs=logits,
                                                   num_sampled=num_samples, num_classes=self.target_vocab_size)
-            softmax_loss_function = sampled_loss
+            softmax_loss_function = sample_loss
 
         self.keep_drop = tf.placeholder(tf.float32)
 
         # 定义encoder的decoder阶段的多层dropout RNNCell
         def create_rnn_cell():
-            encoDecoCell = tf.contrib.rnn.BasicLSTMCell(hidden_size)
-            encoDecoCell = tf.contrib.rnn.DropoutWrapper(encoDecoCell, input_keep_prob=1.0,
-                                                         output_keep_prob=self.keep_drop)
-            return encoDecoCell
+            enco_deco_cell = tf.contrib.rnn.BasicLSTMCell(hidden_size)
+            enco_deco_cell = tf.contrib.rnn.DropoutWrapper(enco_deco_cell, input_keep_prob=1.0, output_keep_prob=self.keep_drop)
+            return enco_deco_cell
 
-        encoCell = tf.contrib.rnn.MultiRNNCell([create_rnn_cell() for _ in range(num_layers)])
+        enco_cell = tf.contrib.rnn.MultiRNNCell([create_rnn_cell() for _ in range(num_layers)])
 
         # 定义输入的placeholder, 采用了列表的形式
         self.encoder_inputs = []
@@ -73,30 +73,30 @@ class Seq2SeqModel():
 
         for i in range(en_de_seq_len[1]):
             self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None, ], name="decoder{0}".format(i)))
-            self.decoder_targets.append(tf.placeholder(tf.int32, shape=[None, ], name="decoder{0}".format(i)))
+            self.decoder_targets.append(tf.placeholder(tf.int32, shape=[None, ], name="target{0}".format(i)))
             self.target_weights.append(tf.placeholder(tf.float32, shape=[None, ], name="weight{0}".format(i)))
 
         # test模式，将上一时刻的输出当作下一时刻的输入
         if forward_only:
-            if beam_search: # 如果是beam_search的话，则调用自己的写的embedding_attention_seq2seq函数，而不是legacy_seq2seq下面的
-                self.beam_oupputs, _, self.beam_path, self.beam_symbol = embedding_attention_seq2seq(
-                    self.decoder_inputs, self.decoder_inputs, encoCell, num_encoder_symbols = source_vocab_size,
-                    num_decoder_symbols = target_vocab_size, embedding_size = hidden_size,
-                    output_projection = output_projection, feed_previous=True)
+            if beam_search:  # 如果是beam_search的话，则调用自己的写的embedding_attention_seq2seq函数，而不是legacy_seq2seq下面的
+                self.beam_outputs, _, self.beam_path, self.beam_symbol=embedding_attention_seq2seq(
+                    self.decoder_inputs, self.decoder_inputs, enco_cell, num_encoder_symbols=source_vocab_size,
+                    num_decoder_symbols=target_vocab_size, embedding_size=hidden_size,
+                    output_projection=output_projection, feed_previous=True)
             else:
                 decoder_outputs, _ = tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
-                    self.encoder_inputs, self.decoder_inputs, encoCell, num_encoder_symbols=source_vocab_size,
-                    num_decoder_symbols = target_vocab_size, embedding_size=hidden_size,
-                    output_projection = output_projection, feed_previous = True)
+                    self.encoder_inputs, self.decoder_inputs, enco_cell, num_encoder_symbols=source_vocab_size,
+                    num_decoder_symbols=target_vocab_size, embedding_size=hidden_size,
+                    output_projection=output_projection, feed_previous=True)
 
                 # 因为seq2seq模型中未指定output_projection, 所以需要在输出之后自行进行output_projection[1]
                 if output_projection is not None:
-                    self.outputs = tf.matmul(decoder_outputs, output_projection[0] + output_projection[1])
+                    self.outputs = tf.matmul(decoder_outputs, output_projection[0]) + output_projection[1]
 
         else:
             # 因为不需要将output作为下一时刻的输入，所以不用output_projection
             decoder_outputs, _ = tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
-                self.encoder_inputs, self.decoder_inputs, encoCell, num_encoder_symbols=source_vocab_size,
+                self.encoder_inputs, self.decoder_inputs, enco_cell, num_encoder_symbols=source_vocab_size,
                 num_decoder_symbols=target_vocab_size, embedding_size=hidden_size, output_projection=output_projection,
                 feed_previous=False)
             self.loss = tf.contrib.legacy_seq2seq.sequence_loss(
@@ -125,10 +125,10 @@ class Seq2SeqModel():
 
             run_ops = [self.optOp, self.loss]
         else:
-            feed_dict[self.self.keep_drop] = 1.0
+            feed_dict[self.keep_drop] = 1.0
             for i in range(self.en_de_seq_len[0]):
-                feed_dict[self.self.encoder_inputs[i].name] = encoder_inputs[i]
-            feed_dict[self.self.decoder_inputs[0].name] = [go_token_id]
+                feed_dict[self.encoder_inputs[i].name] = encoder_inputs[i]
+            feed_dict[self.decoder_inputs[0].name] = [go_token_id]
             if self.beam_search:
                 run_ops = [self.beam_path, self.beam_symbol]
             else:

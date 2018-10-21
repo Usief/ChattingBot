@@ -28,7 +28,7 @@ tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100, "How many training step
 tf.app.flags.DEFINE_string("train_dir", './tmp', "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_integer("beam_size", 5, "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("beam_search", True, "Set to True for beam_search.")
-tf.app.flags.DEFINE_boolean("decode", False, "Set to True for interactive decoding.")
+tf.app.flags.DEFINE_boolean("decode", True, "Set to True for interactive decoding.")
 FLAGS = tf.app.flags.FLAGS
 
 def create_model(session, forward_only, beam_search, beam_size = 5):
@@ -38,7 +38,7 @@ def create_model(session, forward_only, beam_search, beam_size = 5):
         FLAGS.size, FLAGS.num_layers, FLAGS.batch_size,
         FLAGS.learning_rate, forward_only=forward_only, beam_search=beam_search, beam_size=beam_size)
     ckpt = tf.train.latest_checkpoint(FLAGS.train_dir)
-    model_path = 'G:/project/ChattingBot/tmp'
+    model_path = './tmp/chat_bot.ckpt-0'
     if forward_only:
         model.saver.restore(session, model_path)
     elif ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
