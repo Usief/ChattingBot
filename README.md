@@ -1,7 +1,7 @@
 # ChattingBot
 
 ## Training process
-![](./training progress.PNG)
+![](./training_progress.PNG)
 
 ## Play with the chatbot
-![](./Interactive result.png)
+![](./Interactive_result.png)
